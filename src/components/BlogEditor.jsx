@@ -4,84 +4,124 @@ import TurndownService from "turndown";
 import "react-quill/dist/quill.snow.css";
 import Quill from "quill";
 import ImageResize from "quill-image-resize-module-react";
+import hljs from "highlight.js";
+import "highlight.js/styles/github-dark.css";
+import javascript from "highlight.js/lib/languages/javascript";
+import python from "highlight.js/lib/languages/python";
+import java from "highlight.js/lib/languages/java";
+import csharp from "highlight.js/lib/languages/csharp";
+import cpp from "highlight.js/lib/languages/cpp";
+import htmlLang from "highlight.js/lib/languages/xml";
+import cssLang from "highlight.js/lib/languages/css";
 
-// Registrar módulo de imagen
 Quill.register("modules/imageResize", ImageResize);
+
+hljs.registerLanguage("javascript", javascript);
+hljs.registerLanguage("python", python);
+hljs.registerLanguage("java", java);
+hljs.registerLanguage("csharp", csharp);
+hljs.registerLanguage("cpp", cpp);
+hljs.registerLanguage("html", htmlLang);
+hljs.registerLanguage("css", cssLang);
 
 export default function BlogEditor() {
   const [content, setContent] = useState("");
   const [savedHtml, setSavedHtml] = useState("");
-  const quillRef = useRef(null);
   const [isReady, setIsReady] = useState(false);
+  const [showSizeSelector, setShowSizeSelector] = useState(false);
+  const [customWidth, setCustomWidth] = useState("300");
+  const [showLangSelector, setShowLangSelector] = useState(false);
+  const [selectedRange, setSelectedRange] = useState(null);
+  const [selectedLanguage, setSelectedLanguage] = useState("javascript");
+  const quillRef = useRef(null);
+
+  const languages = ["javascript", "java", "python", "csharp", "cpp", "html", "css", "jsx"];
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setIsReady(true);
-    }
+    if (typeof window !== "undefined") setIsReady(true);
   }, []);
 
-  // Función para subir imágenes
+  // ---------- IMAGES ----------
   const uploadImage = async (file) => {
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("upload_preset", "preset_publico"); // tu preset público
-    formData.append("folder", "imagenes-blog"); // carpeta en Cloudinary
-
+    formData.append("upload_preset", "preset_publico");
+    formData.append("folder", "imagenes-blog");
     try {
       const response = await fetch(
         "https://api.cloudinary.com/v1_1/dqbdcwefp/image/upload",
-        {
-          method: "POST",
-          body: formData,
-        }
+        { method: "POST", body: formData }
       );
       if (!response.ok) throw new Error("Error subiendo la imagen");
       const data = await response.json();
-      return data.secure_url; // URL HTTPS lista para insertar
+      return data.secure_url;
     } catch (error) {
-      console.error("Error en uploadImage:", error);
+      console.error(error);
       alert("No se pudo subir la imagen");
       return null;
     }
   };
 
-
-  // Handler para insertar imágenes
-  const imageHandler = useCallback(() => {
+  const imageHandler = useCallback(() => setShowSizeSelector(true), []);
+  const handleSizeConfirm = useCallback(() => {
+    setShowSizeSelector(false);
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
     input.click();
-
     input.onchange = async () => {
       const file = input.files?.[0];
       if (file && quillRef.current) {
         const url = await uploadImage(file);
         if (url) {
           const editor = quillRef.current.getEditor();
-          const range = editor.getSelection() || { index: editor.getLength() };
-          editor.insertEmbed(range.index, "image", url);
+          const range = editor.getSelection(true) || { index: editor.getLength() };
+          editor.insertEmbed(range.index, "image", url, "user");
+          editor.formatText(range.index, 1, { width: `${customWidth}px`, height: "auto" });
         }
       }
     };
+  }, [customWidth]);
+
+  // ---------- CODE-BLOCK ----------
+  const codeHandler = useCallback(() => {
+    const editor = quillRef.current.getEditor();
+    const range = editor.getSelection(true);
+    setSelectedRange(range);
+    setShowLangSelector(true);
   }, []);
 
-  // Toolbar y módulos
+  const handleLangConfirm = () => {
+    const editor = quillRef.current.getEditor();
+    if (selectedRange) {
+      editor.insertText(selectedRange.index, "\n", "user");
+      editor.insertEmbed(selectedRange.index, "code-block", true, "user");
+      const [line] = editor.getLines(selectedRange.index, 1);
+      line.domNode.dataset.language = selectedLanguage; // Guardamos lenguaje
+    }
+    setShowLangSelector(false);
+    setSelectedRange(null);
+  };
+
+  // ---------- QUILL MODULES ----------
   const modules = isReady
     ? {
-      toolbar: {
-        container: [
-          [{ header: [1, 2, 3, false] }],
-          ["bold", "italic", "underline", "strike"],
-          [{ list: "ordered" }, { list: "bullet" }],
-          [{ align: [] }], // Permite alinear texto
-          ["link", "image"],
-          ["clean"],
-        ],
-        handlers: { image: imageHandler },
-      },
-      imageResize: { modules: ["Resize", "DisplaySize"] },
-    }
+        toolbar: {
+          container: [
+            [{ header: [1, 2, 3, false] }],
+            ["bold", "italic", "underline", "strike"],
+            [{ list: "ordered" }, { list: "bullet" }],
+            [{ align: [] }],
+            ["link", "image", "code-block"],
+            ["clean"],
+          ],
+          handlers: {
+            image: imageHandler,
+            "code-block": codeHandler,
+          },
+        },
+        imageResize: { parchment: Quill.import("parchment"), modules: ["Resize", "DisplaySize"] },
+      }
     : {};
 
   const formats = [
@@ -94,27 +134,79 @@ export default function BlogEditor() {
     "bullet",
     "link",
     "image",
+    "code-block",
     "align",
+    "width",
   ];
 
-  const cleanHtml = (html) => {
-    return html.replace(/<p><br><\/p>/g, "<br>");
-  };
+  const cleanHtml = (html) => html.replace(/<p><br><\/p>/g, "<br>");
+
+  const cleanNPBSP = (content) => content.replace(/&nbsp;/g, ' ');
 
 
-  // Guardar post y generar markdown
+  // ---------- HANDLE SAVE ----------
   const handleSave = () => {
     const turndownService = new TurndownService();
-    const markdown = turndownService.turndown(content);
+    const cleanedHtml = cleanHtml(content);
 
-    const cleanedHtml = cleanHtml(content); // <-- limpia los <p><br></p>
-    setSavedHtml(cleanedHtml);
+    const finalHtml = cleanNPBSP(cleanedHtml);
 
-    console.log("HTML Guardado:\n", content);
-    console.log("HTML Limpio:\n", cleanedHtml);
-    console.log("Markdown (para referencia futura):\n", markdown);
+    // Agregar clases de lenguaje a los bloques
+    const tempDiv = document.createElement("div");
+    
+    //tempDiv.innerHTML = cleanedHtml;
+    tempDiv.innerHTML = finalHtml;
+    const blocks = tempDiv.querySelectorAll("pre.ql-syntax");
+    blocks.forEach((block) => {
+      if (!block.dataset.language) block.dataset.language = "plaintext";
+    });
+
+    const htmlWithLang = tempDiv.innerHTML;
+    setSavedHtml(htmlWithLang);
+    const markdown = turndownService.turndown(htmlWithLang);
+
+    console.log("HTML Original:", content);
+    console.log("HTML Limpio:", htmlWithLang);
+    console.log("Markdown:", markdown);
+
+    
   };
 
+  // ---------- HIGHLIGHT JS ----------
+  useEffect(() => {
+    if (!savedHtml) return;
+
+    const blocks = document.querySelectorAll(".blog-preview pre.ql-syntax");
+
+    blocks.forEach((block) => {
+      const code = block.textContent;
+      const lang = block.dataset.language;
+      const result = lang
+        ? hljs.highlight(code, { language: lang })
+        : hljs.highlightAuto(code, languages);
+
+      block.innerHTML = result.value;
+
+      // Label
+      const oldLabel = block.querySelector(".language-label");
+      if (oldLabel) oldLabel.remove();
+      const label = document.createElement("div");
+      label.textContent = result.language || "plaintext";
+      label.className = "language-label";
+      label.style.cssText = `
+        position: absolute;
+        top: 0;
+        right: 0;
+        background: #333;
+        color: #fff;
+        padding: 2px 6px;
+        font-size: 12px;
+        border-radius: 0 0 0 5px;
+      `;
+      block.style.position = "relative";
+      block.appendChild(label);
+    });
+  }, [savedHtml]);
 
   return (
     <div style={{ padding: "20px", maxWidth: "800px", margin: "auto" }}>
@@ -135,12 +227,7 @@ export default function BlogEditor() {
 
       <button
         onClick={handleSave}
-        style={{
-          marginTop: "10px",
-          padding: "10px 20px",
-          fontWeight: "bold",
-          cursor: "pointer",
-        }}
+        style={{ marginTop: "10px", padding: "10px 20px", fontWeight: "bold", cursor: "pointer" }}
       >
         Guardar Post
       </button>
@@ -150,52 +237,81 @@ export default function BlogEditor() {
           <h3>Vista previa HTML</h3>
           <div
             className="blog-preview"
-            style={{
-              border: "1px solid #ccc",
-              borderRadius: "5px",
-              padding: "15px",
-            }}
+            style={{ border: "1px solid #ccc", borderRadius: "5px", padding: "15px" }}
             dangerouslySetInnerHTML={{ __html: savedHtml }}
-          ></div>
+          />
         </div>
       )}
 
-      {/* Estilos para la vista previa */}
+      {/* Imagen selector */}
+      {showSizeSelector && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
+          background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center",
+          justifyContent: "center", zIndex: 1000,
+        }}>
+          <div style={{ background: "#fff", padding: "20px", borderRadius: "10px", boxShadow: "0 2px 8px rgba(0,0,0,0.3)", textAlign: "center" }}>
+            <h3>Introduce el ancho inicial (en px)</h3>
+            <input
+              type="number"
+              value={customWidth}
+              onChange={(e) => setCustomWidth(e.target.value)}
+              style={{ marginTop: "10px", padding: "8px", width: "100px", textAlign: "center", borderRadius: "5px", border: "1px solid #ccc", fontSize: "16px" }}
+            />
+            <div style={{ marginTop: "20px" }}>
+              <button onClick={handleSizeConfirm} style={{ padding: "8px 16px", marginRight: "10px", background: "#007bff", color: "#fff", border: "none", borderRadius: "5px", cursor: "pointer" }}>Confirmar</button>
+              <button onClick={() => setShowSizeSelector(false)} style={{ padding: "8px 16px", background: "#ccc", border: "none", borderRadius: "5px", cursor: "pointer" }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Language selector */}
+      {showLangSelector && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
+          background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center",
+          justifyContent: "center", zIndex: 1000,
+        }}>
+          <div style={{ background: "#fff", padding: "20px", borderRadius: "10px", boxShadow: "0 2px 8px rgba(0,0,0,0.3)", textAlign: "center" }}>
+            <h3>Selecciona el lenguaje del bloque de código</h3>
+            <select value={selectedLanguage} onChange={(e) => setSelectedLanguage(e.target.value)} style={{ marginTop: "10px", padding: "8px", fontSize: "16px" }}>
+              {languages.map((lang) => (
+                <option key={lang} value={lang}>{lang.toUpperCase()}</option>
+              ))}
+            </select>
+            <div style={{ marginTop: "20px" }}>
+              <button onClick={handleLangConfirm} style={{ padding: "8px 16px", marginRight: "10px", background: "#007bff", color: "#fff", border: "none", borderRadius: "5px", cursor: "pointer" }}>Confirmar</button>
+              <button onClick={() => setShowLangSelector(false)} style={{ padding: "8px 16px", background: "#ccc", border: "none", borderRadius: "5px", cursor: "pointer" }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
-        .blog-preview .ql-align-center {
-          text-align: center;
+        .blog-preview .ql-align-center { text-align: center; }
+        .blog-preview .ql-align-right { text-align: right; }
+        .blog-preview .ql-align-left { text-align: left; }
+        .blog-preview .ql-align-justify { text-align: justify; }
+        .ql-editor img { max-width: 100%; height: auto; }
+
+        .ql-editor pre, .blog-preview pre {
+          background-color: #1e1e1e;
+          color: #dcdcdc;
+          padding: 10px;
+          border-radius: 5px;
+          overflow-x: auto;
+          font-family: 'Courier New', Courier, monospace;
+          white-space: pre-wrap;
+          position: relative;
         }
 
-        .blog-preview .ql-align-right {
-          text-align: right;
+        .ql-editor code, .blog-preview code {
+          background-color: #1e1e1e;
+          color: #dcdcdc;
+          padding: 2px 4px;
+          border-radius: 3px;
         }
-
-        .blog-preview .ql-align-left {
-          text-align: left;
-        }
-
-        .blog-preview .ql-align-justify {
-          text-align: justify;
-        }
-
-        /* Opcional: imágenes siguen con centrado automático si quieres */
-        .blog-preview .ql-align-center img {
-          display: block;
-          margin: 0 auto;
-        }
-
-        .blog-preview .ql-align-right img {
-          display: block;
-          margin-left: auto;
-          margin-right: 0;
-        }
-
-        .blog-preview .ql-align-left img {
-          display: block;
-          margin-left: 0;
-          margin-right: auto;
-        }
-
       `}</style>
     </div>
   );
