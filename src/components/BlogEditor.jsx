@@ -23,23 +23,28 @@ export default function BlogEditor() {
   // Función para subir imágenes
   const uploadImage = async (file) => {
     const formData = new FormData();
-    formData.append("image", file);
+    formData.append("file", file);
+    formData.append("upload_preset", "preset_publico"); // tu preset público
+    formData.append("folder", "imagenes-blog"); // carpeta en Cloudinary
 
     try {
-      const response = await fetch("http://90.165.108.212:8081/api/upload.php", {
-        method: "POST",
-        body: formData,
-      });
-
+      const response = await fetch(
+        "https://api.cloudinary.com/v1_1/dqbdcwefp/image/upload",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
       if (!response.ok) throw new Error("Error subiendo la imagen");
       const data = await response.json();
-      return data.url;
+      return data.secure_url; // URL HTTPS lista para insertar
     } catch (error) {
       console.error("Error en uploadImage:", error);
       alert("No se pudo subir la imagen");
       return null;
     }
   };
+
 
   // Handler para insertar imágenes
   const imageHandler = useCallback(() => {
@@ -92,14 +97,24 @@ export default function BlogEditor() {
     "align",
   ];
 
+  const cleanHtml = (html) => {
+    return html.replace(/<p><br><\/p>/g, "<br>");
+  };
+
+
   // Guardar post y generar markdown
   const handleSave = () => {
     const turndownService = new TurndownService();
     const markdown = turndownService.turndown(content);
-    setSavedHtml(content);
+
+    const cleanedHtml = cleanHtml(content); // <-- limpia los <p><br></p>
+    setSavedHtml(cleanedHtml);
+
     console.log("HTML Guardado:\n", content);
+    console.log("HTML Limpio:\n", cleanedHtml);
     console.log("Markdown (para referencia futura):\n", markdown);
   };
+
 
   return (
     <div style={{ padding: "20px", maxWidth: "800px", margin: "auto" }}>
@@ -147,28 +162,38 @@ export default function BlogEditor() {
 
       {/* Estilos para la vista previa */}
       <style>{`
-        .blog-preview img {
-          max-width: 100%;
-          display: block;
-          margin: 10px auto; /* centra la imagen */
-        }
-        .blog-preview p, 
-        .blog-preview h1, 
-        .blog-preview h2, 
-        .blog-preview h3 {
-          line-height: 1.6;
-          margin-bottom: 10px;
-          color: #333;
-        }
-        /* Clases de alineación de Quill */
         .blog-preview .ql-align-center {
           text-align: center;
         }
+
         .blog-preview .ql-align-right {
           text-align: right;
         }
+
+        .blog-preview .ql-align-left {
+          text-align: left;
+        }
+
         .blog-preview .ql-align-justify {
           text-align: justify;
+        }
+
+        /* Opcional: imágenes siguen con centrado automático si quieres */
+        .blog-preview .ql-align-center img {
+          display: block;
+          margin: 0 auto;
+        }
+
+        .blog-preview .ql-align-right img {
+          display: block;
+          margin-left: auto;
+          margin-right: 0;
+        }
+
+        .blog-preview .ql-align-left img {
+          display: block;
+          margin-left: 0;
+          margin-right: auto;
         }
 
       `}</style>
