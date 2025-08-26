@@ -33,6 +33,27 @@ export default function BlogEditor() {
   const [showLangSelector, setShowLangSelector] = useState(false);
   const [selectedRange, setSelectedRange] = useState(null);
   const [selectedLanguage, setSelectedLanguage] = useState("javascript");
+
+  // PRUEBA BACKEND 
+  const [showApiSelector, setShowApiSelector] = useState(false);
+  const [selectedEndpoint, setSelectedEndpoint] = useState("/api/test/users");
+  const backendUrl =
+    process.env.NODE_ENV === "development"
+      ? "http://localhost:8080"
+      : "https://mi-backend.onrender.com";
+
+
+  const endpoints = [
+    { label: "Todos los usuarios", path: "/api/test/users" },
+    { label: "Contraseña por ID (ejemplo: ID 1)", path: "/api/test/users/1/password" },
+    { label: "Usuarios con contraseñas", path: "/api/test/users/userwithpassword" },
+    { label: "Usuarios con posts", path: "/api/test/users/with-posts" },
+    { label: "Usuarios con posts light (Mostrará HTML en vista previa)", path: "/api/test/users/with-posts-light" },
+    { label: "Usuarios con posts optimized", path: "/api/test/users/with-posts-chatgpt" },
+  ];
+
+
+
   const quillRef = useRef(null);
 
   const languages = ["javascript", "java", "python", "csharp", "cpp", "html", "css", "jsx"];
@@ -106,22 +127,22 @@ export default function BlogEditor() {
   // ---------- QUILL MODULES ----------
   const modules = isReady
     ? {
-        toolbar: {
-          container: [
-            [{ header: [1, 2, 3, false] }],
-            ["bold", "italic", "underline", "strike"],
-            [{ list: "ordered" }, { list: "bullet" }],
-            [{ align: [] }],
-            ["link", "image", "code-block"],
-            ["clean"],
-          ],
-          handlers: {
-            image: imageHandler,
-            "code-block": codeHandler,
-          },
+      toolbar: {
+        container: [
+          [{ header: [1, 2, 3, false] }],
+          ["bold", "italic", "underline", "strike"],
+          [{ list: "ordered" }, { list: "bullet" }],
+          [{ align: [] }],
+          ["link", "image", "code-block"],
+          ["clean"],
+        ],
+        handlers: {
+          image: imageHandler,
+          "code-block": codeHandler,
         },
-        imageResize: { parchment: Quill.import("parchment"), modules: ["Resize", "DisplaySize"] },
-      }
+      },
+      imageResize: { parchment: Quill.import("parchment"), modules: ["Resize", "DisplaySize"] },
+    }
     : {};
 
   const formats = [
@@ -153,7 +174,7 @@ export default function BlogEditor() {
 
     // Agregar clases de lenguaje a los bloques
     const tempDiv = document.createElement("div");
-    
+
     //tempDiv.innerHTML = cleanedHtml;
     tempDiv.innerHTML = finalHtml;
     const blocks = tempDiv.querySelectorAll("pre.ql-syntax");
@@ -169,8 +190,57 @@ export default function BlogEditor() {
     console.log("HTML Limpio:", htmlWithLang);
     console.log("Markdown:", markdown);
 
-    
+
   };
+
+  const handleApiCall = async () => {
+    try {
+      const response = await fetch(`${backendUrl}${selectedEndpoint}`);
+      if (!response.ok) throw new Error(`Error: ${response.status}`);
+      const data = await response.json();
+      console.log("Respuesta API:", data);
+      alert("Consulta exitosa, revisa la consola!");
+    } catch (error) {
+      console.error("Error en la llamada API:", error);
+      alert("Hubo un error en la llamada. Revisa consola.");
+    } finally {
+      setShowApiSelector(false);
+    }
+  };
+
+  const handleApiCallProbandoHTMLBACKEND = async () => {
+    try {
+      const response = await fetch(`${backendUrl}${selectedEndpoint}`);
+      if (!response.ok) throw new Error(`Error: ${response.status}`);
+      const data = await response.json();
+      console.log("Respuesta API:", data);
+
+      // NUEVO: si es endpoint light, tomar post id 3 del user 2
+      if (selectedEndpoint === "/api/test/users/with-posts-light") {
+        const user = data.find(u => u.id === 2);
+        if (user) {
+          const post = user.posts.find(p => p.id === 3);
+          if (post) {
+            console.log("(HTML) Contenido del post:", post.content);
+            setSavedHtml(post.content); // Lo pone en la vista previa
+          } else {
+            console.warn("No se encontró post con id 3 para el usuario 2");
+          }
+        } else {
+          console.warn("No se encontró usuario con id 2");
+        }
+      }
+
+      alert("Consulta exitosa, revisa la consola! (HTML si endpoint light)");
+    } catch (error) {
+      console.error("Error en la llamada API:", error);
+      alert("Hubo un error en la llamada. Revisa consola.");
+    } finally {
+      setShowApiSelector(false);
+    }
+  };
+
+
 
   // ---------- HIGHLIGHT JS ----------
   useEffect(() => {
@@ -232,6 +302,14 @@ export default function BlogEditor() {
         Guardar Post
       </button>
 
+      <button
+        onClick={() => setShowApiSelector(true)}
+        style={{ marginTop: "10px", padding: "10px 20px", fontWeight: "bold", cursor: "pointer", backgroundColor: "#28a745", color: "#fff" }}
+      >
+        Probar API
+      </button>
+
+
       {savedHtml && (
         <div style={{ marginTop: "40px" }}>
           <h3>Vista previa HTML</h3>
@@ -265,6 +343,48 @@ export default function BlogEditor() {
           </div>
         </div>
       )}
+
+      {/* API selector */}
+      {showApiSelector && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
+          background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center",
+          justifyContent: "center", zIndex: 1000,
+        }}>
+          <div style={{
+            background: "#fff", padding: "20px", borderRadius: "10px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.3)", textAlign: "center", width: "400px"
+          }}>
+            <h3>Selecciona un endpoint</h3>
+            <select
+              value={selectedEndpoint}
+              onChange={(e) => setSelectedEndpoint(e.target.value)}
+              style={{ marginTop: "10px", padding: "8px", fontSize: "16px", width: "100%" }}
+            >
+              {endpoints.map((endpoint) => (
+                <option key={endpoint.path} value={endpoint.path}>
+                  {endpoint.label}
+                </option>
+              ))}
+            </select>
+            <div style={{ marginTop: "20px" }}>
+              <button
+                onClick={handleApiCallProbandoHTMLBACKEND} // se esta probando luego cambiar handleApiCall
+                style={{ padding: "8px 16px", marginRight: "10px", background: "#007bff", color: "#fff", border: "none", borderRadius: "5px", cursor: "pointer" }}
+              >
+                Confirmar
+              </button>
+              <button
+                onClick={() => setShowApiSelector(false)}
+                style={{ padding: "8px 16px", background: "#ccc", border: "none", borderRadius: "5px", cursor: "pointer" }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Language selector */}
       {showLangSelector && (
@@ -304,6 +424,10 @@ export default function BlogEditor() {
           font-family: 'Courier New', Courier, monospace;
           white-space: pre-wrap;
           position: relative;
+        }
+
+        .blog-preview p {
+          white-space: pre-wrap;
         }
 
         .ql-editor code, .blog-preview code {
