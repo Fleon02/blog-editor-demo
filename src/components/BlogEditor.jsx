@@ -47,9 +47,7 @@ export default function BlogEditor() {
     { label: "Todos los usuarios", path: "/api/test/users" },
     { label: "Contraseña por ID (ejemplo: ID 1)", path: "/api/test/users/1/password" },
     { label: "Usuarios con contraseñas", path: "/api/test/users/userwithpassword" },
-    { label: "Usuarios con posts", path: "/api/test/users/with-posts" },
-    { label: "Usuarios con posts light (Mostrará HTML en vista previa)", path: "/api/test/users/with-posts-light" },
-    { label: "Usuarios con posts optimized", path: "/api/test/users/with-posts-chatgpt" },
+    { label: "Usuarios con posts (Mostrará HTML en vista previa)", path: "/api/test/users/with-posts-raw" },
   ];
 
 
@@ -60,6 +58,10 @@ export default function BlogEditor() {
   const [options, setOptions] = useState([]); // opciones cargadas
   const [selectedOptionId, setSelectedOptionId] = useState(null);
   const [loadingOptions, setLoadingOptions] = useState(false);
+
+  const [postTitle, setPostTitle] = useState("Post Prueba"); // valor inicial
+
+
 
 
   // Modal selección usuario/post
@@ -220,7 +222,7 @@ export default function BlogEditor() {
   };
 
   const handleApiCall = () => {
-    if (selectedEndpoint === "/api/test/users/with-posts-light") {
+    if (selectedEndpoint === "/api/test/users/with-posts-raw") {
       setShowApiSelector(false);
       handleApiCallLight(); // <-- aquí hacemos la llamada y abrimos el modal
       return;
@@ -296,26 +298,21 @@ export default function BlogEditor() {
       return;
     }
 
-    // Determinar qué nivel se está usando
-    const categoryId = postLevel === "category" ? selectedOptionId : null;
-    const subcategoryId = postLevel === "subcategory" ? selectedOptionId : null;
-    const elementId = postLevel === "element" ? selectedOptionId : null;
+    const titleToUse = postTitle.trim() === "" ? "Post Prueba" : postTitle;
 
     const postObject = {
-      userId: 1, // fijo para pruebas
-      categoryId,
-      subcategoryId,
-      elementId,
-      title: "Post Prueba",
+      userId: 1, // simula usuario logueado
+      categoryId: postLevel === "category" ? selectedOptionId : null,
+      subcategoryId: postLevel === "subcategory" ? selectedOptionId : null,
+      elementId: postLevel === "element" ? selectedOptionId : null,
+      title: titleToUse,
       content: savedHtml,
     };
 
     try {
       const response = await fetch(`${backendUrl}/api/test/create-post`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(postObject),
       });
 
@@ -329,19 +326,19 @@ export default function BlogEditor() {
 
       alert(`Post creado correctamente: ${data.data.title}`);
       console.log("Respuesta del backend:", data);
-
       setShowCreatePostModal(false);
-
+      setPostTitle(""); // limpiar input
     } catch (error) {
-      console.error("Errors al conectar con el backend:", error);
+      console.error("Error al conectar con el backend:", error);
       alert("No se pudo conectar con el backend. Revisa la consola.");
     }
   };
 
+
   const handleApiCallLight = async () => {
     try {
       // Aquí estaba mal, ahora usamos el endpoint con posts
-      const response = await fetch(`${backendUrl}/api/test/users/with-posts-light`);
+      const response = await fetch(`${backendUrl}/api/test/users/with-posts-raw`);
       const json = await response.json();
 
       if (!response.ok) {
@@ -554,7 +551,11 @@ export default function BlogEditor() {
             <h3>Crear nuevo post</h3>
 
             <label>Nivel del post:</label>
-            <select value={postLevel} onChange={(e) => setPostLevel(e.target.value)} style={{ marginTop: "10px", padding: "8px", width: "100%" }}>
+            <select
+              value={postLevel}
+              onChange={(e) => setPostLevel(e.target.value)}
+              style={{ marginTop: "10px", padding: "8px", width: "100%" }}
+            >
               <option value="category">Categoría</option>
               <option value="subcategory">Subcategoría</option>
               <option value="element">Elemento</option>
@@ -578,15 +579,33 @@ export default function BlogEditor() {
               </select>
             )}
 
-
+            <label style={{ marginTop: "15px", display: "block" }}>Título del post:</label>
+            <input
+              type="text"
+              value={postTitle}
+              onChange={(e) => setPostTitle(e.target.value)}
+              placeholder="Introduce el título"
+              style={{ marginTop: "5px", padding: "8px", width: "100%" }}
+            />
 
             <div style={{ marginTop: "20px" }}>
-              <button onClick={handleCreatePost} style={{ padding: "8px 16px", marginRight: "10px", background: "#28a745", color: "#fff", border: "none", borderRadius: "5px", cursor: "pointer" }}>Crear Post</button>
-              <button onClick={() => setShowCreatePostModal(false)} style={{ padding: "8px 16px", background: "#ccc", border: "none", borderRadius: "5px", cursor: "pointer" }}>Cancelar</button>
+              <button
+                onClick={handleCreatePost}
+                style={{ padding: "8px 16px", marginRight: "10px", background: "#28a745", color: "#fff", border: "none", borderRadius: "5px", cursor: "pointer" }}
+              >
+                Crear Post
+              </button>
+              <button
+                onClick={() => setShowCreatePostModal(false)}
+                style={{ padding: "8px 16px", background: "#ccc", border: "none", borderRadius: "5px", cursor: "pointer" }}
+              >
+                Cancelar
+              </button>
             </div>
           </div>
         </div>
       )}
+
 
       {showUserPostSelector && (
         <div style={{
