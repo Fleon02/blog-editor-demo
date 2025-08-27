@@ -53,6 +53,32 @@ export default function BlogEditor() {
   ];
 
 
+  // prueba creacion post 
+  // Nivel de clasificación del post
+  const [showCreatePostModal, setShowCreatePostModal] = useState(false);
+  const [postLevel, setPostLevel] = useState("category"); // category | subcategory | element
+  const [options, setOptions] = useState([]); // opciones cargadas
+  const [selectedOptionId, setSelectedOptionId] = useState(null);
+  const [loadingOptions, setLoadingOptions] = useState(false);
+
+
+  // Modal selección usuario/post
+  const [showUserPostSelector, setShowUserPostSelector] = useState(false);
+  const [usersForPreview, setUsersForPreview] = useState([]);
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [selectedPostId, setSelectedPostId] = useState(null);
+  const [postsForSelectedUser, setPostsForSelectedUser] = useState([]);
+
+  // Llamar cuando cambia el nivel
+  useEffect(() => {
+    if (showCreatePostModal) {
+      loadOptions(postLevel);
+      setSelectedOptionId(null);
+    }
+  }, [postLevel, showCreatePostModal]);
+
+
+
 
   const quillRef = useRef(null);
 
@@ -193,12 +219,31 @@ export default function BlogEditor() {
 
   };
 
-  const handleApiCall = async () => {
+  const handleApiCall = () => {
+    if (selectedEndpoint === "/api/test/users/with-posts-light") {
+      setShowApiSelector(false);
+      handleApiCallLight(); // <-- aquí hacemos la llamada y abrimos el modal
+      return;
+    }
+
+    // Para otros endpoints, hacer fetch directamente
+    fetchBackendEndpoint(selectedEndpoint);
+  };
+
+
+  // Función para llamar al backend
+  const fetchBackendEndpoint = async (endpoint) => {
     try {
-      const response = await fetch(`${backendUrl}${selectedEndpoint}`);
-      if (!response.ok) throw new Error(`Error: ${response.status}`);
-      const data = await response.json();
-      console.log("Respuesta API:", data);
+      const response = await fetch(`${backendUrl}${endpoint}`);
+      const json = await response.json();
+
+      if (!response.ok) {
+        console.error("Error en API:", json);
+        alert(json.message || "Hubo un error en la llamada. Revisa consola.");
+        return;
+      }
+
+      console.log("Respuesta API:", json.data || json);
       alert("Consulta exitosa, revisa la consola!");
     } catch (error) {
       console.error("Error en la llamada API:", error);
@@ -208,37 +253,140 @@ export default function BlogEditor() {
     }
   };
 
-  const handleApiCallProbandoHTMLBACKEND = async () => {
-    try {
-      const response = await fetch(`${backendUrl}${selectedEndpoint}`);
-      if (!response.ok) throw new Error(`Error: ${response.status}`);
-      const data = await response.json();
-      console.log("Respuesta API:", data);
 
-      // NUEVO: si es endpoint light, tomar post id 3 del user 2
-      if (selectedEndpoint === "/api/test/users/with-posts-light") {
-        const user = data.find(u => u.id === 2);
-        if (user) {
-          const post = user.posts.find(p => p.id === 3);
-          if (post) {
-            console.log("(HTML) Contenido del post:", post.content);
-            setSavedHtml(post.content); // Lo pone en la vista previa
-          } else {
-            console.warn("No se encontró post con id 3 para el usuario 2");
-          }
-        } else {
-          console.warn("No se encontró usuario con id 2");
-        }
+  // Función para cargar opciones según el nivel
+  const loadOptions = async (level) => {
+    setLoadingOptions(true);
+    try {
+      let url = `${backendUrl}/api/test/`;
+      switch (level) {
+        case "category": url += "categories"; break;
+        case "subcategory": url += "subcategories"; break;
+        case "element": url += "elements"; break;
+        default: url += "categories";
       }
 
-      alert("Consulta exitosa, revisa la consola! (HTML si endpoint light)");
+      const response = await fetch(url);
+      const json = await response.json();
+
+      if (!response.ok) {
+        alert(json.message || "Error al cargar opciones");
+        setOptions([]);
+      } else {
+        setOptions(json.data || json);
+      }
     } catch (error) {
-      console.error("Error en la llamada API:", error);
-      alert("Hubo un error en la llamada. Revisa consola.");
+      console.error("Error cargando opciones:", error);
+      setOptions([]);
     } finally {
-      setShowApiSelector(false);
+      setLoadingOptions(false);
     }
   };
+
+
+
+  const handleCreatePost = async () => {
+    if (!selectedOptionId) {
+      alert("Selecciona una opción antes de crear el post");
+      return;
+    }
+
+    if (!savedHtml || savedHtml.trim().length === 0) {
+      alert("⚠️ No hay contenido en el editor. No se puede crear el post.");
+      return;
+    }
+
+    // Determinar qué nivel se está usando
+    const categoryId = postLevel === "category" ? selectedOptionId : null;
+    const subcategoryId = postLevel === "subcategory" ? selectedOptionId : null;
+    const elementId = postLevel === "element" ? selectedOptionId : null;
+
+    const postObject = {
+      userId: 1, // fijo para pruebas
+      categoryId,
+      subcategoryId,
+      elementId,
+      title: "Post Prueba",
+      content: savedHtml,
+    };
+
+    try {
+      const response = await fetch(`${backendUrl}/api/test/create-post`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(postObject),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(`Error al crear post: ${data.message || "Error desconocido"}`);
+        console.error("Error del backend:", data);
+        return;
+      }
+
+      alert(`Post creado correctamente: ${data.data.title}`);
+      console.log("Respuesta del backend:", data);
+
+      setShowCreatePostModal(false);
+
+    } catch (error) {
+      console.error("Errors al conectar con el backend:", error);
+      alert("No se pudo conectar con el backend. Revisa la consola.");
+    }
+  };
+
+  const handleApiCallLight = async () => {
+    try {
+      // Aquí estaba mal, ahora usamos el endpoint con posts
+      const response = await fetch(`${backendUrl}/api/test/users/with-posts-light`);
+      const json = await response.json();
+
+      if (!response.ok) {
+        alert(json.message || "Error cargando usuarios");
+        return;
+      }
+
+      const users = json.data || [];
+      if (!users.length) {
+        alert("No se encontraron usuarios");
+        return;
+      }
+
+      setUsersForPreview(users);
+      setSelectedUserId(null);
+      setSelectedPostId(null);
+      setPostsForSelectedUser([]);
+      setShowUserPostSelector(true); // abrir modal con usuarios cargados
+    } catch (error) {
+      console.error(error);
+      alert("Error en la llamada API");
+    }
+  };
+
+
+
+
+  const handleConfirmPostSelection = () => {
+    if (!selectedUserId || selectedPostId == null) {
+      return alert("Selecciona un post");
+    }
+
+    const user = usersForPreview.find(u => u.id === selectedUserId);
+    if (!user) return alert("Usuario no encontrado");
+
+    const post = user.posts.find(p => p.id === selectedPostId);
+    if (!post) return alert("Post no encontrado");
+
+    setSavedHtml(post.content || "");
+    alert("Post cargado correctamente: " + post.title);
+
+    setShowUserPostSelector(false);
+    setShowApiSelector(false);
+  };
+
 
 
 
@@ -309,6 +457,14 @@ export default function BlogEditor() {
         Probar API
       </button>
 
+      <button
+        onClick={() => setShowCreatePostModal(true)}
+        style={{ marginTop: "10px", padding: "10px 20px", fontWeight: "bold", cursor: "pointer", backgroundColor: "#007bff", color: "#fff" }}
+      >
+        Crear Nuevo Post
+      </button>
+
+
 
       {savedHtml && (
         <div style={{ marginTop: "40px" }}>
@@ -369,7 +525,7 @@ export default function BlogEditor() {
             </select>
             <div style={{ marginTop: "20px" }}>
               <button
-                onClick={handleApiCallProbandoHTMLBACKEND} // se esta probando luego cambiar handleApiCall
+                onClick={handleApiCall} // se esta probando luego cambiar handleApiCall
                 style={{ padding: "8px 16px", marginRight: "10px", background: "#007bff", color: "#fff", border: "none", borderRadius: "5px", cursor: "pointer" }}
               >
                 Confirmar
@@ -384,6 +540,127 @@ export default function BlogEditor() {
           </div>
         </div>
       )}
+
+      {showCreatePostModal && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
+          background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center",
+          justifyContent: "center", zIndex: 1000,
+        }}>
+          <div style={{
+            background: "#fff", padding: "20px", borderRadius: "10px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.3)", textAlign: "center", width: "400px"
+          }}>
+            <h3>Crear nuevo post</h3>
+
+            <label>Nivel del post:</label>
+            <select value={postLevel} onChange={(e) => setPostLevel(e.target.value)} style={{ marginTop: "10px", padding: "8px", width: "100%" }}>
+              <option value="category">Categoría</option>
+              <option value="subcategory">Subcategoría</option>
+              <option value="element">Elemento</option>
+            </select>
+
+            <label style={{ marginTop: "15px", display: "block" }}>Selecciona opción:</label>
+            {loadingOptions ? (
+              <p>Cargando opciones...</p>
+            ) : options.length === 0 ? (
+              <p style={{ color: "red" }}>⚠️ No se pudieron cargar las opciones</p>
+            ) : (
+              <select
+                value={selectedOptionId || ""}
+                onChange={(e) => setSelectedOptionId(e.target.value)}
+                style={{ marginTop: "10px", padding: "8px", width: "100%" }}
+              >
+                <option value="" disabled>Selecciona...</option>
+                {options.map((opt) => (
+                  <option key={opt.id} value={opt.id}>{opt.name || opt.title}</option>
+                ))}
+              </select>
+            )}
+
+
+
+            <div style={{ marginTop: "20px" }}>
+              <button onClick={handleCreatePost} style={{ padding: "8px 16px", marginRight: "10px", background: "#28a745", color: "#fff", border: "none", borderRadius: "5px", cursor: "pointer" }}>Crear Post</button>
+              <button onClick={() => setShowCreatePostModal(false)} style={{ padding: "8px 16px", background: "#ccc", border: "none", borderRadius: "5px", cursor: "pointer" }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showUserPostSelector && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
+          background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center",
+          justifyContent: "center", zIndex: 1000,
+        }}>
+          <div style={{
+            background: "#fff", padding: "20px", borderRadius: "10px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.3)", width: "400px", textAlign: "center"
+          }}>
+            <h3>Selecciona usuario y post</h3>
+
+            <label style={{ marginTop: "10px", display: "block" }}>Usuario:</label>
+            <select
+              value={selectedUserId ?? ""}
+              onChange={(e) => {
+                const userId = Number(e.target.value);
+                setSelectedUserId(userId);
+
+                const user = usersForPreview.find(u => Number(u.id) === userId);
+                setPostsForSelectedUser(user?.posts ?? []);
+                setSelectedPostId(null);
+              }}
+
+              style={{ width: "100%", padding: "8px", marginTop: "5px" }}
+            >
+              <option value="" disabled>Selecciona usuario...</option>
+              {usersForPreview.map(u => (
+                <option key={u.id} value={u.id}>{u.username}</option>
+              ))}
+            </select>
+
+            {selectedUserId && (
+              <>
+                {postsForSelectedUser.length > 0 ? (
+                  <>
+                    <label style={{ marginTop: "15px", display: "block" }}>Post:</label>
+                    <select
+                      value={selectedPostId ?? ""}
+                      onChange={e => setSelectedPostId(Number(e.target.value))} // asegurar número
+                      style={{ width: "100%", padding: "8px", marginTop: "5px" }}
+                    >
+                      <option value="" disabled>Selecciona post...</option>
+                      {postsForSelectedUser.map(p => (
+                        <option key={p.id} value={p.id}>{p.title}</option>
+                      ))}
+                    </select>
+                  </>
+                ) : (
+                  <p style={{ marginTop: "15px", color: "red" }}>⚠️ Este usuario no tiene posts disponibles</p>
+                )}
+              </>
+            )}
+
+            <div style={{ marginTop: "20px" }}>
+              <button
+                onClick={handleConfirmPostSelection}
+                style={{ padding: "8px 16px", marginRight: "10px", background: "#28a745", color: "#fff", border: "none", borderRadius: "5px", cursor: "pointer" }}
+              >
+                Confirmar
+              </button>
+              <button
+                onClick={() => setShowUserPostSelector(false)}
+                style={{ padding: "8px 16px", background: "#ccc", border: "none", borderRadius: "5px", cursor: "pointer" }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
 
 
       {/* Language selector */}
